@@ -53,6 +53,8 @@ void DrawWorld(World *world, RogueRenderer *renderer, float deltaTime) {
 int main(int argc, char *argv[]) {
 	RogueWindow window;
 	RogueWindow_Init(&window, 640, 480);
+	window.scale.x = 2.0f;
+	window.scale.y = 2.0f;
 
 	RogueFont font = {
 		.symbolWidth = 10, .symbolHeight = 10,

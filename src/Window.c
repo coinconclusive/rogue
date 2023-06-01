@@ -3,6 +3,43 @@
 #include <GL/gl3w.h>
 #include <GLFW/glfw3.h>
 
+const char *RogueGlDebugSourceToString(GLenum source) {
+	switch (source) {
+	case GL_DEBUG_SOURCE_API: return "OpenGL API";
+	case GL_DEBUG_SOURCE_WINDOW_SYSTEM: return "Window system API";
+	case GL_DEBUG_SOURCE_SHADER_COMPILER: return "Shader compiler";
+	case GL_DEBUG_SOURCE_THIRD_PARTY: return "Third-party";
+	case GL_DEBUG_SOURCE_APPLICATION: return "Application";
+	case GL_DEBUG_SOURCE_OTHER: return "Other";
+	default: return "Unknown";
+	}
+}
+
+const char *RogueGlDebugSeverityToString(GLenum severity) {
+	switch (severity) {
+	case GL_DEBUG_SEVERITY_HIGH: return "High";
+	case GL_DEBUG_SEVERITY_MEDIUM: return "Medium";
+	case GL_DEBUG_SEVERITY_LOW: return "Low";
+	case GL_DEBUG_SEVERITY_NOTIFICATION: return "Notification";
+	default: return "Unknown";
+	}
+}
+
+const char *RogueGlDebugMessageTypeToString(GLenum type) {
+	switch (type) {
+	case GL_DEBUG_TYPE_ERROR: return "Error";
+	case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR: return "Deprecated Behaviour";
+	case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR: return "Undefined Behaviour";
+	case GL_DEBUG_TYPE_PORTABILITY: return "Portability";
+	case GL_DEBUG_TYPE_PERFORMANCE: return "Performance";
+	case GL_DEBUG_TYPE_MARKER: return "Marker";
+	case GL_DEBUG_TYPE_PUSH_GROUP: return "Push Group";
+	case GL_DEBUG_TYPE_POP_GROUP: return "Pop Group";
+	case GL_DEBUG_TYPE_OTHER: return "Other";
+	default: return "Unknown";
+	}
+}
+
 void GLAPIENTRY RogueGlMessageCallback(
 	GLenum source,
   GLenum type,
@@ -13,9 +50,11 @@ void GLAPIENTRY RogueGlMessageCallback(
   const void *userParam
 ) {
   RogueLogError(
-		"GL CALLBACK: %stype = 0x%x, severity = 0x%x, message = %s\n",
-		(type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR ** " : ""),
-		type, severity, message
+		"GL CALLBACK: %s, severity: %s, source: %s\n%s",
+		RogueGlDebugMessageTypeToString(type),
+		RogueGlDebugSeverityToString(severity),
+		RogueGlDebugSourceToString(source),
+		message
 	);
 }
 
@@ -24,6 +63,7 @@ struct RogueWindowImpl {
 	GLuint texture;
 	GLuint shader;
 	GLuint vao;
+	GLint scaleUniform, textureUniform;
 	RogueKeyState keyStates[ROGUE_KEY_MAX_];
 };
 
@@ -33,7 +73,12 @@ void RogueGlfwErrorCallback(int error, const char *message) {
 
 void RogueGlfwKeyCallback(GLFWwindow *window, int key, int scancode, int action, int mods) {
 	RogueWindow *w = glfwGetWindowUserPointer(window);
-	w->impl_->keyStates[key] = action + 1;
+	static RogueKeyState map[] = {
+		[GLFW_PRESS] = ROGUE_KEY_STATE_PRESS,
+		[GLFW_RELEASE] = ROGUE_KEY_STATE_RELEASE,
+		[GLFW_REPEAT] = ROGUE_KEY_STATE_REPEAT,
+	};
+	w->impl_->keyStates[key] = map[action];
 }
 
 static void RogueWindow_CreateWindow_(RogueWindow *self) {
@@ -99,9 +144,13 @@ static void RogueWindow_CreateShaderProgram_(RogueWindow *self) {
 		static const char *source =
 			"#version 460 core\n"
 			"uniform sampler2D uTex;\n"
+			"uniform vec2 uScale;\n"
 			"in vec2 sUV;\n"
 			"out vec4 oColor;\n"
-			"void main() { oColor = texture(uTex, sUV / 2.0); }\n";
+			"void main() {\n"
+			"  vec2 uv = vec2(sUV.x / uScale.x, sUV.y / uScale.y);\n"
+			"  oColor = texture(uTex, uv);\n"
+			"}\n";
 
 		glShaderSource(fShader, 1, &source, NULL);
 		glCompileShader(fShader);
@@ -133,8 +182,10 @@ static void RogueWindow_CreateShaderProgram_(RogueWindow *self) {
 	glDeleteShader(vShader);
 	glDeleteShader(fShader);
 
-	glProgramUniform1i(self->impl_->shader, glGetUniformLocation(self->impl_->shader, "uTex"), 0);
+	self->impl_->scaleUniform = glGetUniformLocation(self->impl_->shader, "uScale");
+	self->impl_->textureUniform = glGetUniformLocation(self->impl_->shader, "uTex");
 	glUseProgram(self->impl_->shader);
+	glUniform1i(self->impl_->textureUniform, 0);
 }
 
 void RogueWindow_CreateVAO_(RogueWindow *self) {
@@ -146,6 +197,8 @@ void RogueWindow_Init(RogueWindow *self, size_t width, size_t height) {
 	self->width = width;
 	self->height = height;
 	self->buffer = RogueAllocArray(sizeof(*self->buffer), self->width * self->height);
+	self->scale.x = 1.0f;
+	self->scale.y = 1.0f;
 
 	RogueWindow_CreateWindow_(self);
 	RogueWindow_CreateShaderProgram_(self);
@@ -186,6 +239,7 @@ void RogueWindow_Refresh(RogueWindow *self) {
 		self->buffer
 	);
 
+	glUniform2f(self->impl_->scaleUniform, self->scale.x, self->scale.y);
 	glBindTextureUnit(0, self->impl_->texture);
 	glDrawArrays(GL_TRIANGLES, 0, 3);
 	

@@ -9,6 +9,7 @@ typedef uint32_t RoguePixel;
 typedef struct {
 	size_t width, height;
 	RoguePixel *buffer;
+	struct { float x, y; } scale;
 	struct RogueWindowImpl *impl_;
 } RogueWindow;
 
