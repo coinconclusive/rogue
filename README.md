@@ -1,6 +1,6 @@
-# rogue
+# rg
 
-a roguelike thing
+a rglike thing
 
 ## building
 

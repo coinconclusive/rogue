@@ -3,7 +3,7 @@
 #include <GL/gl3w.h>
 #include <GLFW/glfw3.h>
 
-const char *RogueGlDebugSourceToString(GLenum source) {
+const char *RgGlDebugSourceToString(GLenum source) {
 	switch (source) {
 	case GL_DEBUG_SOURCE_API: return "OpenGL API";
 	case GL_DEBUG_SOURCE_WINDOW_SYSTEM: return "Window system API";
@@ -15,7 +15,7 @@ const char *RogueGlDebugSourceToString(GLenum source) {
 	}
 }
 
-const char *RogueGlDebugSeverityToString(GLenum severity) {
+const char *RgGlDebugSeverityToString(GLenum severity) {
 	switch (severity) {
 	case GL_DEBUG_SEVERITY_HIGH: return "High";
 	case GL_DEBUG_SEVERITY_MEDIUM: return "Medium";
@@ -25,7 +25,7 @@ const char *RogueGlDebugSeverityToString(GLenum severity) {
 	}
 }
 
-const char *RogueGlDebugMessageTypeToString(GLenum type) {
+const char *RgGlDebugMessageTypeToString(GLenum type) {
 	switch (type) {
 	case GL_DEBUG_TYPE_ERROR: return "Error";
 	case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR: return "Deprecated Behaviour";
@@ -40,7 +40,7 @@ const char *RogueGlDebugMessageTypeToString(GLenum type) {
 	}
 }
 
-void GLAPIENTRY RogueGlMessageCallback(
+void GLAPIENTRY RgGlMessageCallback(
 	GLenum source,
   GLenum type,
   GLuint id,
@@ -49,70 +49,77 @@ void GLAPIENTRY RogueGlMessageCallback(
   const GLchar *message,
   const void *userParam
 ) {
-  RogueLogError(
+  RgLogError(
 		"GL CALLBACK: %s, severity: %s, source: %s\n%s",
-		RogueGlDebugMessageTypeToString(type),
-		RogueGlDebugSeverityToString(severity),
-		RogueGlDebugSourceToString(source),
+		RgGlDebugMessageTypeToString(type),
+		RgGlDebugSeverityToString(severity),
+		RgGlDebugSourceToString(source),
 		message
 	);
 }
 
-struct RogueWindowImpl {
+struct RgWindowImpl {
 	GLFWwindow *window;
 	GLuint texture;
 	GLuint shader;
 	GLuint vao;
 	GLint scaleUniform, textureUniform;
-	RogueKeyState keyStates[ROGUE_KEY_MAX_];
+	RgKeyState *keyStates;
 };
 
-void RogueGlfwErrorCallback(int error, const char *message) {
-	RogueLogError("GLFW Error (%d): %s", error, message);
+void RgGlfwErrorCallback(int error, const char *message) {
+	RgLogError("GLFW Error (%d): %s", error, message);
 }
 
-void RogueGlfwKeyCallback(GLFWwindow *window, int key, int scancode, int action, int mods) {
-	RogueWindow *w = glfwGetWindowUserPointer(window);
-	static RogueKeyState map[] = {
-		[GLFW_PRESS] = ROGUE_KEY_STATE_PRESS,
-		[GLFW_RELEASE] = ROGUE_KEY_STATE_RELEASE,
-		[GLFW_REPEAT] = ROGUE_KEY_STATE_REPEAT,
+void RgGlfwKeyCallback(GLFWwindow *window, int key, int scancode, int action, int mods) {
+	RgWindow *self = glfwGetWindowUserPointer(window);
+
+	static RgKeyState map[] = {
+		[GLFW_PRESS] = RG_KEY_STATE_PRESS,
+		[GLFW_RELEASE] = RG_KEY_STATE_RELEASE,
+		[GLFW_REPEAT] = RG_KEY_STATE_REPEAT,
 	};
-	w->impl_->keyStates[key] = map[action];
+
+	self->impl_->keyStates[key] = map[action];
 }
 
-static void RogueWindow_CreateWindow_(RogueWindow *self) {
-	glfwSetErrorCallback(&RogueGlfwErrorCallback);
-	if (!glfwInit()) RogueFail("Failed to initialize GLFW.");
-	self->impl_ = RogueAlloc(sizeof(*self->impl_));
+void RgGlfwWindowSizeCallback(GLFWwindow *window, int newWidth, int newHeight);
+
+static void RgWindow_CreateWindow_(RgWindow *self) {
+	glfwSetErrorCallback(&RgGlfwErrorCallback);
+	if (!glfwInit()) RgFail("Failed to initialize GLFW.");
 	
 	glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-	self->impl_->window = glfwCreateWindow(self->width, self->height, "Rogue", NULL, NULL);
-	if (self->impl_->window == NULL) RogueFail("Failed to create GLFW window.");
+
+	self->impl_->window = glfwCreateWindow(self->width, self->height, "Rg", NULL, NULL);
+	if (self->impl_->window == NULL) RgFail("Failed to create GLFW window.");
+
 	glfwSetWindowUserPointer(self->impl_->window, self);
-	glfwSetKeyCallback(self->impl_->window, RogueGlfwKeyCallback);
+
+	glfwSetKeyCallback(self->impl_->window, &RgGlfwKeyCallback);
+	glfwSetWindowSizeCallback(self->impl_->window, &RgGlfwWindowSizeCallback);
 
 	glfwMakeContextCurrent(self->impl_->window);
-	if (gl3wInit() < 0) RogueFail("Failed to initialize GL3W.");
+	if (gl3wInit() < 0) RgFail("Failed to initialize GL3W.");
 
 	glEnable(GL_DEBUG_OUTPUT);
-	glDebugMessageCallback(&RogueGlMessageCallback, NULL);
+	glDebugMessageCallback(&RgGlMessageCallback, NULL);
 	glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, NULL, GL_TRUE);
 }
 
-static void RogueWindow_CreateTexture_(RogueWindow *self) {
+static void RgWindow_CreateTexture_(RgWindow *self) {
 	glCreateTextures(GL_TEXTURE_2D, 1, &self->impl_->texture);
 	glTextureParameteri(self->impl_->texture, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTextureParameteri(self->impl_->texture, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glTextureParameteri(self->impl_->texture, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTextureParameteri(self->impl_->texture, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTextureStorage2D(self->impl_->texture, 1, GL_RGBA8, self->width, self->height);
+	glTextureStorage2D(self->impl_->texture, 1, GL_RGBA8, self->bufferWidth, self->bufferHeight);
 }
 
-static void RogueWindow_CreateShaderProgram_(RogueWindow *self) {
+static void RgWindow_CreateShaderProgram_(RgWindow *self) {
 	self->impl_->shader = glCreateProgram();
 	GLuint vShader = glCreateShader(GL_VERTEX_SHADER);
 	GLuint fShader = glCreateShader(GL_FRAGMENT_SHADER);
@@ -136,7 +143,7 @@ static void RogueWindow_CreateShaderProgram_(RogueWindow *self) {
 		if(!success) {
 			GLchar message[1024];
 			glGetShaderInfoLog(vShader, 1024, NULL, message);
-			RogueFail("Failed to compile vertex shader:\n%s", message);
+			RgFail("Failed to compile vertex shader:\n%s", message);
 		}
 	}
 	
@@ -161,7 +168,7 @@ static void RogueWindow_CreateShaderProgram_(RogueWindow *self) {
 		if(!success) {
 			GLchar message[1024];
 			glGetShaderInfoLog(fShader, 1024, NULL, message);
-			RogueFail("Failed to compile fragment shader:\n%s", message);
+			RgFail("Failed to compile fragment shader:\n%s", message);
 		}
 	}
 
@@ -175,7 +182,7 @@ static void RogueWindow_CreateShaderProgram_(RogueWindow *self) {
 			GLsizei log_length = 0;
 			GLchar message[1024];
 			glGetProgramInfoLog(self->impl_->shader, 1024, &log_length, message);
-			RogueFail("Failed to link shader program:\n%s", message);
+			RgFail("Failed to link shader program:\n%s", message);
 		}
 	}
 
@@ -188,76 +195,107 @@ static void RogueWindow_CreateShaderProgram_(RogueWindow *self) {
 	glUniform1i(self->impl_->textureUniform, 0);
 }
 
-void RogueWindow_CreateVAO_(RogueWindow *self) {
+void RgWindow_CreateVAO_(RgWindow *self) {
 	glCreateVertexArrays(1, &self->impl_->vao);
 	glBindVertexArray(self->impl_->vao);
 }
 
-void RogueWindow_Init(RogueWindow *self, size_t width, size_t height) {
-	self->width = width;
-	self->height = height;
-	self->buffer = RogueAllocArray(sizeof(*self->buffer), self->width * self->height);
-	self->scale.x = 1.0f;
-	self->scale.y = 1.0f;
-
-	RogueWindow_CreateWindow_(self);
-	RogueWindow_CreateShaderProgram_(self);
-	RogueWindow_CreateTexture_(self);
-	RogueWindow_CreateVAO_(self);
+void RgWindow_CreateBuffer_(RgWindow *self) {
+	self->bufferWidth = self->width / self->scale.x;
+	self->bufferHeight = self->height / self->scale.y;
+	self->buffer = RgAllocArray(sizeof(*self->buffer), self->bufferWidth * self->bufferHeight);
 }
 
-void RogueWindow_DeInit(RogueWindow *self) {
+void RgGlfwWindowSizeCallback(GLFWwindow *window, int newWidth, int newHeight) {
+	RgWindow *self = glfwGetWindowUserPointer(window);
+
+	if (self->width == newWidth && self->height == newHeight) return;
+
+	self->width = newWidth;
+	self->height = newHeight;
+	
+	RgDeAlloc(self->buffer);
+	RgWindow_CreateBuffer_(self);
+
+	glDeleteTextures(1, &self->impl_->texture);
+	RgWindow_CreateTexture_(self);
+}
+
+void RgWindow_Init(RgWindow *self, const RgWindowInitInfo *info) {
+	self->width = info->width;
+	self->height = info->height;
+	self->scale.x = info->scaleX;
+	self->scale.y = info->scaleY;
+	self->buffer = NULL;
+	self->impl_ = RgAlloc(sizeof(*self->impl_));
+	self->impl_->keyStates = RgAllocArray(sizeof(*self->impl_->keyStates), RG_KEY_MAX_ + 1);
+
+	RgWindow_CreateBuffer_(self);
+	RgWindow_CreateWindow_(self);
+	RgWindow_CreateShaderProgram_(self);
+	RgWindow_CreateTexture_(self);
+	RgWindow_CreateVAO_(self);
+}
+
+void RgWindow_DeInit(RgWindow *self) {
 	glDeleteVertexArrays(1, &self->impl_->vao);
 	glDeleteTextures(1, &self->impl_->texture);
-	glDeleteProgram(self->impl_->texture);
+	glDeleteProgram(self->impl_->shader);
 
 	glfwDestroyWindow(self->impl_->window);
 
-	RogueDeAlloc(self->impl_);
+	RgDeAlloc(self->impl_->keyStates);
+	self->impl_->keyStates = NULL;
+
+	RgDeAlloc(self->impl_);
 	self->impl_ = NULL;
 
 	glfwTerminate();
 	
-	RogueDeAlloc(self->buffer);
+	RgDeAlloc(self->buffer);
 	self->buffer = NULL;
 }
 
-bool RogueWindow_ShouldStop(RogueWindow *self) {
+bool RgWindow_ShouldStop(RgWindow *self) {
 	return glfwWindowShouldClose(self->impl_->window);
 }
 
-void RogueWindow_Clear(RogueWindow *self, float r, float g, float b, float a) {
+void RgWindow_Clear(RgWindow *self, float r, float g, float b, float a) {
 	glClearColor(r, g, b, a);
 	glClear(GL_COLOR_BUFFER_BIT);
 }
 
-void RogueWindow_Refresh(RogueWindow *self) {
+void RgWindow_Refresh(RgWindow *self) {
 	glTextureSubImage2D(
 		self->impl_->texture, 0,
-		0, 0, self->width, self->height,
+		0, 0, self->bufferWidth, self->bufferHeight,
 		GL_RGBA, GL_UNSIGNED_BYTE,
 		self->buffer
 	);
 
-	glUniform2f(self->impl_->scaleUniform, self->scale.x, self->scale.y);
+	glUniform2f(self->impl_->scaleUniform, 1.0f, 1.0f); // don't scale twice!
 	glBindTextureUnit(0, self->impl_->texture);
 	glDrawArrays(GL_TRIANGLES, 0, 3);
 	
-	for (size_t i = 0; i < ROGUE_KEY_MAX_; ++i)
-		self->impl_->keyStates[i] = ROGUE_KEY_STATE_NONE;
+	for (size_t i = 0; i < RG_KEY_MAX_; ++i)
+		self->impl_->keyStates[i] = RG_KEY_STATE_NONE;
 
 	glfwSwapBuffers(self->impl_->window);
 	glfwPollEvents();
+
+	int width, height;
+	glfwGetFramebufferSize(self->impl_->window, &width, &height);
+	glViewport(0, 0, width, height);
 }
 
-bool RogueWindow_IsKeyDown(RogueWindow *self, RogueKey key) {
+bool RgWindow_IsKeyDown(RgWindow *self, RgKey key) {
 	return glfwGetKey(self->impl_->window, key);
 }
 
-RogueKeyState RogueWindow_GetKeyState(RogueWindow *self, RogueKey key) {
+RgKeyState RgWindow_GetKeyState(RgWindow *self, RgKey key) {
 	return self->impl_->keyStates[key];
 }
 
-float RogueWindow_GetTime(RogueWindow *self) {
+float RgWindow_GetTime(RgWindow *self) {
 	return glfwGetTime();
 }

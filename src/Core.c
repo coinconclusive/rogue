@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <stdarg.h>
 
-void RogueFail(const char *fmt, ...) {
+void RgFail(const char *fmt, ...) {
 	va_list va;
 	va_start(va, fmt);
 	fputs("\033[1;31m", stderr);
@@ -13,7 +13,7 @@ void RogueFail(const char *fmt, ...) {
 	exit(1);
 }
 
-void RogueLogError(const char *fmt, ...) {
+void RgLogError(const char *fmt, ...) {
 	va_list va;
 	va_start(va, fmt);
 	fputs("\033[1;31m", stderr);
@@ -22,6 +22,6 @@ void RogueLogError(const char *fmt, ...) {
 	fputs("\033[m\n", stderr);
 }
 
-void *RogueAllocArray(size_t elemSize, size_t numElems) { return calloc(numElems, elemSize); }
-void *RogueAlloc(size_t size) { return malloc(size); }
-void RogueDeAlloc(void *ptr) { free(ptr); }
+void *RgAllocArray(size_t elemSize, size_t numElems) { return calloc(numElems, elemSize); }
+void *RgAlloc(size_t size) { return malloc(size); }
+void RgDeAlloc(void *ptr) { free(ptr); }
